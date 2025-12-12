@@ -1,0 +1,183 @@
+--[[
+    SCRIPT UNIFICADO PARA EXECUTOR (CLIENT-SIDE) - Versão 0.58s e STAND
+    
+    CORREÇÃO DE VELOCIDADE:
+    1. Intervalo de Teleporte: ALTERADO para 0.58 segundos.
+    
+    OUTRAS FUNCIONALIDADES MANTIDAS:
+    2. LOOP STAND: O jogador fica em pé (Humanoid.Sit = false).
+    3. MUDANÇA CIRCULAR: Teleporta para um novo alvo a cada 0.58s (regra de não repetição).
+    4. PERSISTÊNCIA E MINI BOTÃO.
+--]]
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Variáveis de Controle
+local TELEPORT_DELAY = 0.58 -- CORRIGIDO PARA 0.58 SEGUNDOS
+local BUTTON_COLOR = Color3.fromRGB(150, 0, 255) 
+local BUTTON_TEXT = "Ki" 
+local isTeleporting = false
+local lastTeleportedPlayer = nil -- Rastreia o último alvo (para a regra 'não repetir')
+
+-- --- CONTROLE DINÂMICO DE PERSONAGEM ---
+local Humanoid = nil
+local HumanoidRootPart = nil
+
+local function updateCharacterReferences(char)
+    Humanoid = char and char:FindFirstChild("Humanoid")
+    HumanoidRootPart = char and char:FindFirstChild("HumanoidRootPart")
+end
+
+if LocalPlayer.Character then
+    updateCharacterReferences(LocalPlayer.Character)
+end
+
+LocalPlayer.CharacterAdded:Connect(updateCharacterReferences)
+-- ---------------------------------
+
+--------------------------------------------------------------------------------
+-- 1. LÓGICA DE TELEPORTE (LOOP CIRCULAR E STAND)
+
+local function getNextPlayer()
+    local playersInGame = Players:GetPlayers()
+    local possibleTargets = {}
+    
+    for _, player in ipairs(playersInGame) do
+        local targetCharacter = player.Character
+        local targetHumanoid = targetCharacter and targetCharacter:FindFirstChild("Humanoid")
+        
+        -- Filtro: Vivo, não local, e não o último alvo.
+        if player ~= LocalPlayer and 
+           player ~= lastTeleportedPlayer and 
+           targetHumanoid and 
+           targetHumanoid.Health > 0 then
+            table.insert(possibleTargets, player)
+        end
+    end
+    
+    local nextPlayer = nil
+    
+    if #possibleTargets > 0 then
+        local randomIndex = math.random(1, #possibleTargets)
+        nextPlayer = possibleTargets[randomIndex]
+    end
+
+    return nextPlayer
+end
+
+local function teleportLoop(teleportButton)
+    isTeleporting = true
+    teleportButton.Text = "..." 
+    teleportButton.BackgroundColor3 = Color3.fromRGB(255, 100, 0) 
+    
+    lastTeleportedPlayer = nil -- Começa o ciclo sem alvo anterior
+
+    while isTeleporting do
+        
+        -- A: Garante que o HRP e Humanoid estejam carregados (Persistência)
+        if not Humanoid or not HumanoidRootPart or not HumanoidRootPart.Parent then
+            LocalPlayer.CharacterAdded:Wait()
+            updateCharacterReferences(LocalPlayer.Character)
+        end
+        
+        -- B: Lógica de seleção de alvo (Circular)
+        local nextPlayer = getNextPlayer()
+
+        if Humanoid and HumanoidRootPart and HumanoidRootPart.Parent then
+            
+            -- Garante que o jogador esteja em pé
+            Humanoid.Sit = false 
+            
+            if nextPlayer then
+                local targetHRP = nextPlayer.Character and nextPlayer.Character:FindFirstChild("HumanoidRootPart")
+                
+                if targetHRP then
+                    -- Teleporta para a posição do alvo sem offset (Loop Stand)
+                    HumanoidRootPart.CFrame = targetHRP.CFrame 
+                    
+                    lastTeleportedPlayer = nextPlayer
+                end
+            end
+        end
+
+        task.wait(TELEPORT_DELAY) -- AGORA ESPERA 0.58 SEGUNDOS
+    end
+    
+    -- Finalização do loop
+    Humanoid.Sit = false
+    teleportButton.Text = BUTTON_TEXT
+    teleportButton.BackgroundColor3 = BUTTON_COLOR
+    lastTeleportedPlayer = nil
+end
+
+--------------------------------------------------------------------------------
+-- 2. CRIAÇÃO DA INTERFACE GRÁFICA (MINI BOTÃO PURO 35X35)
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "KiTeleportGui"
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "KiButtonFrame"
+MainFrame.Size = UDim2.new(0, 35, 0, 35) 
+MainFrame.Position = UDim2.new(1, -50, 0, 150)
+MainFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 18) 
+Corner.Parent = MainFrame
+
+local TeleportButton = Instance.new("TextButton")
+TeleportButton.Name = "Ki"
+TeleportButton.Size = UDim2.new(1, 0, 1, 0)
+TeleportButton.Position = UDim2.new(0, 0, 0, 0)
+TeleportButton.BackgroundColor3 = BUTTON_COLOR
+TeleportButton.Text = BUTTON_TEXT 
+TeleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+TeleportButton.Font = Enum.Font.SourceSansBold
+TeleportButton.TextSize = 16 
+TeleportButton.Parent = MainFrame
+
+local ButtonCorner = Instance.new("UICorner")
+ButtonCorner.CornerRadius = UDim.new(0, 18)
+ButtonCorner.Parent = TeleportButton
+
+--------------------------------------------------------------------------------
+-- 3. FUNCIONALIDADE DE TORNAR O BOTÃO MÓVEL (MOBILE/TOUCH OTIMIZADO)
+
+local function onDrag(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        -- Centraliza o frame na posição do toque
+        MainFrame.Position = UDim2.new(0, input.Position.X - MainFrame.AbsoluteSize.X / 2, 
+                                     0, input.Position.Y - MainFrame.AbsoluteSize.Y / 2)
+    end
+end
+
+TeleportButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local dragConnection = UserInputService.InputChanged:Connect(onDrag)
+        
+        local endConnection
+        endConnection = UserInputService.InputEnded:Connect(function(input2)
+            if input2.UserInputType == Enum.UserInputType.MouseButton1 or input2.UserInputType == Enum.UserInputType.Touch then
+                dragConnection:Disconnect()
+                endConnection:Disconnect()
+            end
+        end)
+    end
+end)
+
+--------------------------------------------------------------------------------
+-- 4. CONEXÃO DO BOTÃO 
+
+TeleportButton.MouseButton1Click:Connect(function()
+    if not isTeleporting then
+        task.spawn(teleportLoop, TeleportButton)
+    else
+        isTeleporting = false
+    end
+end)
