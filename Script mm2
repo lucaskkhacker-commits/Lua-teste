@@ -1,0 +1,526 @@
+-- ==============================================================================
+-- 1. SERVIÇOS E VARIÁVEIS GLOBAIS
+-- ==============================================================================
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+-- Variáveis de Lógica Principal
+local isRunning = false
+local coinCollectorThread
+local hasReset = false
+local hasExecutedOnce = false
+local TWEEN_SPEED = 20
+local TELEPORT_DISTANCE = 200
+local espDrawings = {}
+local espEnabled = false
+local MacLibGui
+
+-- VARIÁVEL DE ESTADO PARA PERSISTÊNCIA DE VELOCIDADE
+local currentWalkSpeed = 16 
+local LocalPlayer = Players.LocalPlayer
+
+--------------------------------------------------------------------------------
+--- 2. FUNÇÕES AUXILIARES DE PERSONAGEM (PERSISTÊNCIA CORRIGIDA) ----------------
+--------------------------------------------------------------------------------
+
+-- Função que restaura a velocidade salva
+local function restoreWalkSpeed()
+    local character = LocalPlayer.Character
+    if character and character:FindFirstChildOfClass("Humanoid") then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        -- Aplica o valor salvo
+        humanoid.WalkSpeed = currentWalkSpeed 
+        print("WalkSpeed restaurado para: " .. currentWalkSpeed)
+    end
+end
+
+-- Evento para persistência de velocidade após o respawn (CORREÇÃO)
+LocalPlayer.CharacterAdded:Connect(function(character)
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    
+    if humanoid then
+        local connection = nil
+        local count = 0
+        
+        -- Aplica a velocidade continuamente por um breve período após o respawn
+        connection = RunService.Heartbeat:Connect(function()
+            if count < 15 then -- Aplica por 15 frames para garantir que "pegue"
+                humanoid.WalkSpeed = currentWalkSpeed
+                count = count + 1
+            else
+                connection:Disconnect() 
+            end
+        end)
+        
+        -- Aplica imediatamente também
+        humanoid.WalkSpeed = currentWalkSpeed 
+    end
+end)
+
+-- Garante que a velocidade seja aplicada no PRIMEIRO carregamento do jogo
+if LocalPlayer.Character then
+    restoreWalkSpeed()
+end
+
+
+-- LÓGICA DE COLETA DE MOEDAS (Mantida)
+local function startCoinCollector()
+    if isRunning then return end
+    isRunning = true
+
+    local function getCharacter()
+        return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    end
+
+    local function initializeCharacter()
+        local character = getCharacter()
+        local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
+        local humanoid = character:WaitForChild("Humanoid", 5)
+        return character, humanoidRootPart, humanoid
+    end
+
+    local character, humanoidRootPart, humanoid = initializeCharacter()
+
+    if not humanoidRootPart or not humanoid then
+        warn("Character components not found!")
+        isRunning = false
+        return
+    end
+
+    local mapPaths = {
+        "IceCastle", "SkiLodge", "Station", "LogCabin", "Bank2", "BioLab", "House2", 
+        "Factory", "Hospital3", "Hotel", "Mansion2", "MilBase", "Office3", 
+        "PoliceStation", "Workplace", "ResearchFacility", "ChristmasItaly"
+    }
+    local visitedCoins = {}
+
+    local function findActiveCoinContainer()
+        for _, mapName in ipairs(mapPaths) do
+            local map = Workspace:FindFirstChild(mapName)
+            if map then
+                local coinContainer = map:FindFirstChild("CoinContainer")
+                if coinContainer then
+                    return coinContainer
+                end
+            end
+        end
+        return nil
+    end
+
+    local function findNearestCoin(coinContainer)
+        local nearestCoin = nil
+        local shortestDistance = math.huge
+        
+        if coinContainer then
+            for _, coin in ipairs(coinContainer:GetChildren()) do
+                if coin:IsA("BasePart") and not visitedCoins[coin] then
+                    local distance = (humanoidRootPart.Position - coin.Position).Magnitude
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        nearestCoin = coin
+                    end
+                end
+            end
+        end
+        return nearestCoin
+    end
+
+    local function teleportToCoin(coin)
+        if coin then
+            humanoidRootPart.CFrame = CFrame.new(coin.Position)
+            visitedCoins[coin] = true
+        end
+    end
+
+    local function tweenToCoin(coin)
+        if coin then
+            visitedCoins[coin] = true
+            local distance = (humanoidRootPart.Position - coin.Position).Magnitude
+            local tweenInfo = TweenInfo.new(distance / TWEEN_SPEED, Enum.EasingStyle.Linear)
+            local goal = {CFrame = CFrame.new(coin.Position)}
+            local tween = TweenService:Create(humanoidRootPart, tweenInfo, goal)
+            tween:Play()
+            hasReset = false
+            tween.Completed:Wait()
+        end
+    end
+
+    local function playFallingAnimation()
+        humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+        humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+    end
+
+    local function checkForAllCoinVisualsGone()
+        local coinContainer = findActiveCoinContainer()
+        if coinContainer then
+            local allCoinVisualsGone = true
+            for _, coin in ipairs(coinContainer:GetChildren()) do
+                if coin:IsA("BasePart") and coin:FindFirstChild("CoinVisual") then
+                    allCoinVisualsGone = false
+                    break
+                end
+            end
+
+            if allCoinVisualsGone and not hasReset then
+                character:BreakJoints()
+                visitedCoins = {}
+                hasReset = true
+                wait(1)
+            end
+
+            if allCoinVisualsGone and not hasExecutedOnce then
+                hasExecutedOnce = true
+                -- ATENÇÃO: Script externo (auxqvoa) mantido, mas cuidado ao usar loadstring
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/Ezqhs/-/refs/heads/main/auxqvoa"))()
+            end
+
+            if allCoinVisualsGone then
+                isRunning = false
+            end
+        end
+    end
+
+    local function collectCoins()
+        while isRunning do
+            if not character or not humanoidRootPart or not humanoid or not character.Parent then
+                character, humanoidRootPart, humanoid = initializeCharacter()
+            end
+
+            local coinContainer = findActiveCoinContainer()
+            if not coinContainer then wait(0.01); continue end
+
+            local targetCoin = findNearestCoin(coinContainer)
+            if not targetCoin then wait(0.01); continue end
+
+            checkForAllCoinVisualsGone()
+            if not isRunning then break end
+
+            local distanceToCoin = (humanoidRootPart.Position - targetCoin.Position).Magnitude
+            if distanceToCoin >= TELEPORT_DISTANCE then
+                teleportToCoin(targetCoin)
+            else
+                tweenToCoin(targetCoin)
+            end
+
+            playFallingAnimation()
+            checkForAllCoinVisualsGone()
+            wait(0.01)
+        end
+    end
+
+    collectCoins()
+end
+
+local function stopCoinCollector()
+    isRunning = false
+    if coinCollectorThread then
+        -- A coinCollectorThread agora é o Heartbeat. Desconecta o evento.
+        coinCollectorThread:Disconnect()
+        coinCollectorThread = nil
+    end
+end
+
+-- LÓGICA ESP (Mantida)
+local function createESPForPlayer(player)
+    if player == LocalPlayer then return end
+
+    local topLine = Drawing.new("Line")
+    local bottomLine = Drawing.new("Line")
+    local leftLine = Drawing.new("Line")
+    local rightLine = Drawing.new("Line")
+
+    espDrawings[player] = {topLine, bottomLine, leftLine, rightLine}
+
+    RunService.RenderStepped:Connect(function()
+        if not espEnabled then
+            for _, drawing in pairs(espDrawings[player] or {}) do
+                drawing.Visible = false
+            end
+            return
+        end
+
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+            for _, drawing in pairs(espDrawings[player] or {}) do
+                drawing.Visible = false
+            end
+            return
+        end
+
+        local character = player.Character
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local camera = workspace.CurrentCamera
+            local screenPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+
+            if onScreen then
+                local size = Vector3.new(2, 3, 0) * (character.Head.Size.Y)
+                local topLeft = camera:WorldToViewportPoint((hrp.CFrame * CFrame.new(size.X, size.Y, 0)).p)
+                local topRight = camera:WorldToViewportPoint((hrp.CFrame * CFrame.new(-size.X, size.Y, 0)).p)
+                local bottomLeft = camera:WorldToViewportPoint((hrp.CFrame * CFrame.new(size.X, -size.Y, 0)).p)
+                local bottomRight = camera:WorldToViewportPoint((hrp.CFrame * CFrame.new(-size.X, -size.Y, 0)).p)
+
+                -- Usando o WorldToViewportPoint nos vértices da bounding box
+                topLine.From = Vector2.new(topLeft.X, topLeft.Y)
+                topLine.To = Vector2.new(topRight.X, topRight.Y)
+                bottomLine.From = Vector2.new(bottomLeft.X, bottomLeft.Y)
+                bottomLine.To = Vector2.new(bottomRight.X, bottomRight.Y)
+                leftLine.From = Vector2.new(topLeft.X, topLeft.Y)
+                leftLine.To = Vector2.new(bottomLeft.X, bottomLeft.Y)
+                rightLine.From = Vector2.new(topRight.X, topRight.Y)
+                rightLine.To = Vector2.new(bottomRight.X, bottomRight.Y)
+
+                local color = Color3.fromRGB(0, 255, 0)
+
+                local hasGun = character:FindFirstChild("Gun") or player.Backpack:FindFirstChild("Gun")
+                local hasKnife = character:FindFirstChild("Knife") or player.Backpack:FindFirstChild("Knife")
+
+                if hasGun then
+                    color = Color3.fromRGB(0, 0, 255)
+                elseif hasKnife then
+                    color = Color3.fromRGB(255, 0, 0)
+                end
+
+                for _, line in pairs({topLine, bottomLine, leftLine, rightLine}) do
+                    line.Color = color
+                    line.Thickness = 2
+                    line.Transparency = 1
+                    line.Visible = true
+                end
+            else
+                for _, line in pairs({topLine, bottomLine, leftLine, rightLine}) do
+                    line.Visible = false
+                end
+            end
+        end
+    end)
+end
+
+local function removeESPForPlayer(player)
+    if espDrawings[player] then
+        for _, drawing in pairs(espDrawings[player]) do
+            drawing:Remove()
+        end
+        espDrawings[player] = nil
+    end
+end
+
+for _, player in pairs(Players:GetPlayers()) do
+    createESPForPlayer(player)
+end
+Players.PlayerAdded:Connect(createESPForPlayer)
+Players.PlayerRemoving:Connect(removeESPForPlayer)
+
+
+--------------------------------------------------------------------------------
+--- 3. INICIALIZAÇÃO DO MACLIB E UI
+--------------------------------------------------------------------------------
+
+local MacLib = loadstring(game:HttpGet("https://github.com/biggaboy212/Maclib/releases/latest/download/maclib.txt"))()
+
+local Window = MacLib:Window({
+    Title = "nil.lua | MM2",
+    Subtitle = "#1 MM2 Script",
+    Size = UDim2.fromOffset(550, 450),
+    DragStyle = 1,
+    DisabledWindowControls = {},
+    ShowUserInfo = true,
+    Keybind = Enum.KeyCode.RightControl,
+    AcrylicBlur = true,
+})
+
+MacLibGui = Window.Parent 
+
+-- Criação das Abas e Seções
+local tabGroups = Window:TabGroup({ Name = "Main Tabs" })
+
+local tabs = {
+    Main = tabGroups:Tab({ Name = "Main", Image = "rbxassetid://6023426921" }),
+    Settings = tabGroups:Tab({ Name = "Configurations", Image = "rbxassetid://6031280882" }),
+	ESP = tabGroups:Tab({ Name = "ESP", Image = "rbxassetid://6031075931" }),
+	Roles = tabGroups:Tab({ Name = "Roles", Image = "rbxassetid://6034684930" }),
+	Player = tabGroups:Tab({ Name = "Player", Image = "rbxassetid://6023426921" }),
+}
+
+local sections = {
+    MainSection1 = tabs.Main:Section({ Side = "Left" }),
+    MainSection2 = tabs.Settings:Section({ Side = "Left" }),
+	MainSection3 = tabs.ESP:Section({ Side = "Left" }),
+	MainSection4 = tabs.Roles:Section({ Side = "Left" }),
+	MainSection5 = tabs.Player:Section({ Side = "Left" }),
+	MainSection6 = tabs.Roles:Section({ Side = "Right" }),
+}
+
+-- Headers
+sections.MainSection1:Header({ Name = "Main" })
+sections.MainSection2:Header({ Name = "Tween-Settings" })
+sections.MainSection3:Header({ Name = "ESP Players" })
+sections.MainSection4:Header({ Name = "Sheriff" })
+sections.MainSection6:Header({ Name = "Murder" })
+sections.MainSection5:Header({ Name = "Player" })
+
+
+-- Controles (Toggles, Sliders, Buttons)
+sections.MainSection1:Toggle({
+    Name = "Auto Farm Coins",
+    Default = false,
+    Callback = function(value)
+        if value then
+            -- Conecta o Heartbeat ao início da coleta de moedas
+            coinCollectorThread = RunService.Heartbeat:Connect(startCoinCollector)
+        else
+            stopCoinCollector()
+        end
+    end,
+}, "Toggle")
+
+sections.MainSection2:Slider({
+    Name = "Tween Speed",
+    Default = 20,
+    Minimum = 0,
+    Maximum = 25,
+    DisplayMethod = "Number",
+    Precision = 0,
+    Callback = function(Value)
+        TWEEN_SPEED = Value
+        print("Speed set to: " .. TWEEN_SPEED)
+    end
+}, "Slider")
+
+sections.MainSection3:Toggle({
+    Name = "ESP",
+    Default = false,
+    Callback = function(value)
+        espEnabled = value
+        if not espEnabled then
+            for _, drawings in pairs(espDrawings) do
+                for _, drawing in pairs(drawings) do
+                    drawing.Visible = false
+                end
+            end
+        end
+    end,
+}, "Toggle")
+
+-- Lógica de Roles (Simplificada)
+sections.MainSection4:Toggle({
+    Name = "Auto Grab Gun (WIP)",
+    Default = false,
+    Callback = function(value)
+        -- Código de Auto Grab Gun mantido do seu script original.
+        -- OBS: A lógica de usar uma IntValue no ReplicatedStorage para rastrear
+        -- o Sheriff é complexa e pode falhar dependendo da segurança do jogo.
+        if value then
+            local currentSheriffId = Instance.new("IntValue")
+            currentSheriffId.Name = "CurrentSheriffId"
+            currentSheriffId.Value = 0
+            currentSheriffId.Parent = ReplicatedStorage
+            
+            local function findPlayerWithGun()
+                for _, player in pairs(Players:GetPlayers()) do
+                    local character = player.Character
+                    local backpack = player:FindFirstChild("Backpack")
+                    if (character and character:FindFirstChild("Gun")) or (backpack and backpack:FindFirstChild("Gun")) then
+                        return player
+                    end
+                end
+                return nil
+            end
+
+            -- Conexão para rastrear o Sheriff e tentar pegar a arma
+            RunService.Heartbeat:Connect(function()
+                local playerWithGun = findPlayerWithGun()
+                if playerWithGun and currentSheriffId.Value ~= playerWithGun.UserId then
+                    currentSheriffId.Value = playerWithGun.UserId
+
+                    local sheriffCharacter = playerWithGun.Character
+                    if sheriffCharacter and sheriffCharacter:FindFirstChild("Humanoid") then
+                        sheriffCharacter.Humanoid.Died:Connect(function()
+                            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                                local localHRP = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                local sheriffHRP = sheriffCharacter:FindFirstChild("HumanoidRootPart")
+                                local localHumanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+
+                                if localHRP and sheriffHRP and localHumanoid then
+                                    local previousPosition = localHRP.CFrame
+                                    local originalWalkSpeed = localHumanoid.WalkSpeed
+                                    local originalJumpPower = localHumanoid.JumpPower
+
+                                    localHumanoid.WalkSpeed = 0
+                                    localHumanoid.JumpPower = 0
+
+                                    localHRP.CFrame = sheriffHRP.CFrame
+                                    task.wait(0.5)
+
+                                    localHRP.CFrame = previousPosition
+
+                                    localHumanoid.WalkSpeed = originalWalkSpeed
+                                    localHumanoid.JumpPower = originalJumpPower
+                                end
+                            end
+                        end)
+                    end
+                elseif not playerWithGun then
+                    currentSheriffId.Value = 0
+                end
+            end)
+        end
+    end,
+}, "Toggle")
+
+sections.MainSection4:Button({
+    Name = "Teleport To Gun",
+    Callback = function()
+        for i,v in pairs(Players:GetPlayers()) do
+            if v.Character:FindFirstChild("Gun") or v.Backpack:FindFirstChild("Gun") then
+                Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.Character.HumanoidRootPart.CFrame * CFrame.new(0, 3, 0)
+                break -- Teleporta para o primeiro jogador encontrado com a arma
+            end
+        end
+    end,
+}, "Button")
+
+sections.MainSection6:Button({
+    Name = "Teleport To Murder",
+    Callback = function()
+        for i,v in pairs(Players:GetPlayers()) do
+            if v.Character:FindFirstChild("Knife") or v.Backpack:FindFirstChild("Knife") then
+                Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.Character.HumanoidRootPart.CFrame * CFrame.new(0, 3, 0)
+                break -- Teleporta para o primeiro Murderer encontrado
+            end
+        end
+    end,
+}, "Button")
+
+sections.MainSection6:Button({
+    Name = "Teleport To Sheriff",
+    Callback = function()
+        for i,v in pairs(Players:GetPlayers()) do
+            if v.Character:FindFirstChild("Gun") or v.Backpack:FindFirstChild("Gun") then
+                Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.Character.HumanoidRootPart.CFrame * CFrame.new(0, 3, 0)
+                break -- Teleporta para o Sheriff (quem tem a arma)
+            end
+        end
+    end,
+}, "Button")
+
+sections.MainSection5:Slider({
+    Name = "Player Speed",
+    Default = 16,
+    Minimum = 16,
+    Maximum = 50,
+    DisplayMethod = "Number",
+    Precision = 0,
+    Callback = function(Value)
+        currentWalkSpeed = Value -- Salva a nova velocidade para persistência
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = Value -- Aplica imediatamente
+        end
+    end
+}, "Slider")
+
+-- Fim do script
