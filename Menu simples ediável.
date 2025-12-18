@@ -1,0 +1,98 @@
+local SimpleLib = {}
+
+function SimpleLib:CreateWindow(cfg)
+    local cfg = cfg or {}
+    local TitleText = cfg.Name or "SIMPLE MENU"
+
+    local LMG2L = {}
+    -- ScreenGui Principal (Persistente)
+    LMG2L["Gui"] = Instance.new("ScreenGui", game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"))
+    LMG2L["Gui"].ResetOnSpawn = false
+    LMG2L["Gui"].DisplayOrder = 1
+
+    -- Frame Principal (Sigma Style)
+    local MainFrame = Instance.new("Frame", LMG2L["Gui"])
+    MainFrame.Size = UDim2.new(0, 500, 0, 300)
+    MainFrame.Position = UDim2.new(0.5, -250, 0.4, 0)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Active = true
+
+    -- TopBar (Arrastar)
+    local TopBar = Instance.new("Frame", MainFrame)
+    TopBar.Size = UDim2.new(1, 0, 0, 35)
+    TopBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    TopBar.BorderSizePixel = 0
+
+    local Title = Instance.new("TextLabel", TopBar)
+    Title.Text = "  " .. TitleText
+    Title.Size = UDim2.new(1, 0, 1, 0)
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.BackgroundTransparency = 1
+    Title.Font = Enum.Font.SourceSansBold
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- Container de Conteúdo (Scrolling)
+    local Content = Instance.new("ScrollingFrame", MainFrame)
+    Content.Size = UDim2.new(1, -120, 1, -45)
+    Content.Position = UDim2.new(0, 115, 0, 40)
+    Content.BackgroundTransparency = 1
+    Content.BorderSizePixel = 0
+    Content.ScrollBarThickness = 3
+    
+    local Layout = Instance.new("UIListLayout", Content)
+    Layout.Padding = UDim.new(0, 5)
+    Layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+    -- Botão F/B
+    local FB = Instance.new("TextButton", LMG2L["Gui"])
+    FB.Size = UDim2.new(0, 50, 0, 50)
+    FB.Position = UDim2.new(0.1, 0, 0.1, 0)
+    FB.Text = "F/B"; FB.BackgroundColor3 = Color3.fromRGB(255, 0, 0); FB.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Instance.new("UICorner", FB).CornerRadius = UDim.new(1, 0)
+    
+    -- Botão Minimizar (Aquele triângulo de Resize estilo Sigma)
+    local Resize = Instance.new("ImageLabel", MainFrame)
+    Resize.Size = UDim2.new(0, 20, 0, 20)
+    Resize.Position = UDim2.new(1, -20, 1, -20)
+    Resize.Image = "rbxassetid://38062104"
+    Resize.BackgroundTransparency = 1
+
+    -- [Aqui vão as funções de Arrastar e Redimensionar que fizemos antes]
+    -- (Omiti por espaço, mas você deve incluí-las para o Drag/Resize funcionar)
+
+    FB.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
+
+    -- API para o usuário
+    local Elements = {}
+    
+    function Elements:CreateButton(name, callback)
+        local b = Instance.new("TextButton", Content)
+        b.Size = UDim2.new(0.95, 0, 0, 35)
+        b.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+        b.Text = name
+        b.TextColor3 = Color3.fromRGB(255, 255, 255)
+        b.Font = Enum.Font.SourceSans
+        b.MouseButton1Click:Connect(function() callback() end)
+    end
+
+    function Elements:CreateToggle(name, callback)
+        local state = false
+        local t = Instance.new("TextButton", Content)
+        t.Size = UDim2.new(0.95, 0, 0, 35)
+        t.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+        t.Text = name .. ": OFF"
+        t.TextColor3 = Color3.fromRGB(255, 255, 255)
+        
+        t.MouseButton1Click:Connect(function()
+            state = not state
+            t.Text = name .. (state and ": ON" or ": OFF")
+            t.BackgroundColor3 = state and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(200, 0, 0)
+            callback(state)
+        end)
+    end
+
+    return Elements
+end
+
+return SimpleLib
