@@ -1,0 +1,169 @@
+local LMG2L = {};
+
+-- Principal (Persistência e DisplayOrder)
+LMG2L["ScreenGui_1"] = Instance.new("ScreenGui");
+LMG2L["ScreenGui_1"].Name = "SimpleMenu_Sigma"
+LMG2L["ScreenGui_1"].Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui");
+LMG2L["ScreenGui_1"].ResetOnSpawn = false
+LMG2L["ScreenGui_1"].DisplayOrder = 1 -- Padrão inicial
+
+-- Frame Principal
+local MainFrame = Instance.new("Frame", LMG2L["ScreenGui_1"]);
+MainFrame.Name = "MainFrame"
+MainFrame.BorderSizePixel = 0;
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25);
+MainFrame.Size = UDim2.new(0, 500, 0, 300);
+MainFrame.Position = UDim2.new(0.5, -250, 0.4, 0);
+MainFrame.ClipsDescendants = true
+
+-- TOP BAR (Arrastar)
+local TopBar = Instance.new("Frame", MainFrame);
+TopBar.Size = UDim2.new(1, 0, 0, 35);
+TopBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40);
+TopBar.BorderSizePixel = 0;
+
+local Title = Instance.new("TextLabel", TopBar);
+Title.Text = " SIMPLE MENU | SIGMA";
+Title.Size = UDim2.new(1, -40, 1, 0);
+Title.Position = UDim2.new(0, 10, 0, 0);
+Title.BackgroundTransparency = 1;
+Title.TextColor3 = Color3.fromRGB(255, 255, 255);
+Title.TextXAlignment = Enum.TextXAlignment.Left;
+Title.Font = Enum.Font.SourceSansBold;
+Title.TextSize = 16;
+
+-- LOCAL DAS ABAS (Scrolling)
+local TabScroll = Instance.new("ScrollingFrame", MainFrame);
+TabScroll.Name = "TabScroll"
+TabScroll.Size = UDim2.new(0, 110, 1, -35);
+TabScroll.Position = UDim2.new(0, 0, 0, 35);
+TabScroll.BackgroundColor3 = Color3.fromRGB(15, 15, 15);
+TabScroll.BorderSizePixel = 0;
+TabScroll.ScrollBarThickness = 2;
+TabScroll.CanvasSize = UDim2.new(0,0,2,0)
+
+local TabList = Instance.new("UIListLayout", TabScroll);
+TabList.Padding = UDim.new(0, 5);
+TabList.HorizontalAlignment = Enum.HorizontalAlignment.Center;
+
+-- BASE DE CONTEÚDO (Onde ficam os botões)
+local ContentBase = Instance.new("ScrollingFrame", MainFrame);
+ContentBase.Name = "ContentBase"
+ContentBase.Size = UDim2.new(1, -120, 1, -45);
+ContentBase.Position = UDim2.new(0, 115, 0, 40);
+ContentBase.BackgroundTransparency = 1;
+ContentBase.BorderSizePixel = 0;
+ContentBase.ScrollBarThickness = 4;
+
+-- BOTÃO CONFIG (Aba Automática)
+local ConfigBtn = Instance.new("TextButton", TabScroll);
+ConfigBtn.Size = UDim2.new(0.9, 0, 0, 35);
+ConfigBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40);
+ConfigBtn.Text = "CONFIG";
+ConfigBtn.TextColor3 = Color3.fromRGB(255, 255, 255);
+ConfigBtn.Font = Enum.Font.SourceSansBold;
+
+-- OPÇÃO: APARECER SOBRE OUTROS (Toggle)
+local OverOthersBtn = Instance.new("TextButton", ContentBase);
+OverOthersBtn.Size = UDim2.new(0.9, 0, 0, 40);
+OverOthersBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0);
+OverOthersBtn.Text = "SOBRE OUTROS: OFF";
+OverOthersBtn.TextColor3 = Color3.fromRGB(255, 255, 255);
+OverOthersBtn.Position = UDim2.new(0.05, 0, 0, 10);
+
+local OverOthers = false
+OverOthersBtn.MouseButton1Click:Connect(function()
+    OverOthers = not OverOthers
+    if OverOthers then
+        LMG2L["ScreenGui_1"].DisplayOrder = 999999999 -- Valor máximo
+        OverOthersBtn.Text = "SOBRE OUTROS: ON"
+        OverOthersBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+    else
+        LMG2L["ScreenGui_1"].DisplayOrder = 1
+        OverOthersBtn.Text = "SOBRE OUTROS: OFF"
+        OverOthersBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+    end
+end)
+
+-- RESIZE HANDLE (O triângulo no canto inferior direito estilo Sigma Spy)
+local ResizeHandle = Instance.new("ImageLabel", MainFrame)
+ResizeHandle.Name = "ResizeHandle"
+ResizeHandle.Size = UDim2.new(0, 20, 0, 20)
+ResizeHandle.Position = UDim2.new(1, -20, 1, -20)
+ResizeHandle.BackgroundTransparency = 1
+ResizeHandle.Image = "rbxassetid://38062104" -- Ícone de triângulo/canto
+ResizeHandle.ImageColor3 = Color3.fromRGB(255, 255, 255)
+ResizeHandle.ZIndex = 10
+ResizeHandle.Active = true
+
+-- BOTÃO F/B
+local FB = Instance.new("TextButton", LMG2L["ScreenGui_1"]);
+FB.Size = UDim2.new(0, 50, 0, 50);
+FB.Position = UDim2.new(0.1, 0, 0.1, 0);
+FB.Text = "F/B";
+FB.BackgroundColor3 = Color3.fromRGB(255, 0, 0);
+FB.TextColor3 = Color3.fromRGB(255, 255, 255);
+Instance.new("UICorner", FB).CornerRadius = UDim.new(1, 0)
+
+-------------------------------------------------------------------------
+-- LÓGICA DE ARRASTAR (TOPBAR)
+-------------------------------------------------------------------------
+local function makeDraggable(handle, object)
+    local UIS = game:GetService("UserInputService")
+    local dragging, dragInput, dragStart, startPos
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; dragStart = input.Position; startPos = object.Position
+            input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            object.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+makeDraggable(TopBar, MainFrame)
+makeDraggable(FB, FB)
+
+-------------------------------------------------------------------------
+-- LÓGICA DE REDIMENSIONAR (RESIZE) ESTILO SIGMA SPY
+-------------------------------------------------------------------------
+local function makeResizable(handle, object)
+    local UIS = game:GetService("UserInputService")
+    local dragging, dragStart, startSize
+
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startSize = object.Size
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            local newSizeX = startSize.X.Offset + delta.X
+            local newSizeY = startSize.Y.Offset + delta.Y
+            
+            -- Limites mínimos para não sumir a UI
+            if newSizeX < 250 then newSizeX = 250 end
+            if newSizeY < 150 then newSizeY = 150 end
+            
+            object.Size = UDim2.new(0, newSizeX, 0, newSizeY)
+        end
+    end)
+
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+end
+makeResizable(ResizeHandle, MainFrame)
+
+FB.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
+
+return LMG2L["ScreenGui_1"]
